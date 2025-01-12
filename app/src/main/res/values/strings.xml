@@ -1,0 +1,11 @@
+<resources>
+    <string name="app_name">ToDo Reminder</string>
+    <string name="content_desc_add_button">Add button</string>
+    <string name="textView_no_reminder">Select a ToDo and set a reminder!</string>
+    <string name="button_text_set_reminder">Set Reminder</string>
+    <string name="button_text_delete_last_reminder">Delete Last ToDo</string>
+    <string name="button_text_check_expired_reminders">Check Expired Reminders</string>
+    <string name="button_text_clear_all_reminders">Clear All Reminders</string>
+    <string name="due_date">Due: %1$s</string>
+    <string name="main_title">My Todo List</string>
+</resources>
