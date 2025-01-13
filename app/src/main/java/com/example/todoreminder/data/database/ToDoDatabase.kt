@@ -8,7 +8,7 @@ import com.example.todoreminder.data.model.Item
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 
-@Database(entities = [Item::class], version = 2, exportSchema = false)
+@Database(entities = [Item::class], version = 3, exportSchema = false)
 abstract class ToDoDatabase : RoomDatabase() {
     abstract fun todoDao(): ToDoDao
 

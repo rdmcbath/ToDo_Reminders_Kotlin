@@ -6,12 +6,12 @@ import androidx.room.PrimaryKey
 @Entity(tableName = "items")
 data class Item(
     @PrimaryKey(autoGenerate = true)
-    val id: Long,
+    val id: Long = 0L,
     val title: String,
     val description: String,
     val isCompleted: Boolean,
     val isReminderSet: Boolean,
-    val dueDate: String? = null
+    val dueDate: Long? = null
 ) {
 
     object SampleData {

@@ -15,10 +15,16 @@ import com.example.todoreminder.data.repository.ToDoRepository
 import com.example.todoreminder.notifications.NotificationHelper
 import com.example.todoreminder.utils.HelperUtils
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
 import java.time.LocalDate
 import java.time.LocalTime
+import java.util.Date
+import java.util.Locale
 
 class DetailViewModel(
     private val todoId: Long,
@@ -35,10 +41,7 @@ class DetailViewModel(
     val selectedTime = _selectedTime.asStateFlow()
 
     private val _selectedDueDate = MutableStateFlow<Long?>(null)
-    val selectedDueDate: MutableStateFlow<Long?> = _selectedDueDate
-
-    private val _databaseTodo = MutableStateFlow<Item?>(null)
-    val databaseTodo = _databaseTodo.asStateFlow()
+    val selectedDueDate = _selectedDueDate.asStateFlow()
 
     private val _title = MutableStateFlow("")
     val title = _title.asStateFlow()
@@ -49,26 +52,34 @@ class DetailViewModel(
     private val _isCreatingNew = MutableStateFlow(todo == null)
     val isCreatingNew = _isCreatingNew.asStateFlow()
 
+    val formattedDueDate = selectedDueDate.map { timestamp ->
+        HelperUtils.formatDateTime(timestamp)
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = "No date set"
+    )
 
     init {
-        Log.d("DetailViewModel", "Initializing with todo: $todoId")
         todo?.let {
             _title.value = it.title
             _description.value = it.description
+            _selectedDueDate.value = it.dueDate
+            Log.d("DetailViewModel", "Setting todo: ${it.title}, ${it.description}, ${it.dueDate}")
         }
 
         // Initialize selectedTime if todo has a reminder
         viewModelScope.launch {
             val item = todoRepository.getTodoById(todoId)
             Log.d("DetailViewModel", "Fetched todo from database: $item")
-            if (item?.isReminderSet == true) {  // Only set time if reminder is actually set
-                item.dueDate?.let { dueDate ->
-                    Log.d("DetailViewModel", "Setting initial selectedTime from dueDate: $dueDate")
-                    val localDateTime = HelperUtils.toLocalDateTime(dueDate)
+            if (item?.isReminderSet == true) {
+                item.dueDate?.let { timestamp ->
+                    Log.d("DetailViewModel", "Setting initial selectedTime from dueDate: $timestamp")
+                    val localDateTime = HelperUtils.toLocalDateTime(timestamp)
                     _selectedTime.value = localDateTime.toLocalTime()
                 }
             } else {
-                _selectedTime.value = null  // Set selectedTime to null if no reminder is set
+                _selectedTime.value = null
             }
         }
     }
@@ -81,11 +92,10 @@ class DetailViewModel(
         _description.value = newDescription
     }
 
-    fun updateDueDate(date: Long) {
-        _selectedDueDate.value = date
+    fun onDueDateSelected(milliseconds: Long) {
+        _selectedDueDate.value = milliseconds
     }
 
-    // Function to save new todo
     fun createTodo() {
         if (!isValid()) {
             _uiState.value = DetailUiState.Error("Title cannot be empty")
@@ -95,12 +105,12 @@ class DetailViewModel(
         viewModelScope.launch {
             try {
                 val newTodo = Item(
-                    id = 0, // Room will generate ID
+                    id = 0,
                     title = _title.value,
                     description = _description.value,
                     isCompleted = false,
                     isReminderSet = false,
-                    dueDate = null
+                    dueDate = _selectedDueDate.value
                 )
                 Log.d("DetailViewModel", "Saving new todo: $newTodo")
                 todoRepository.createItem(newTodo)
@@ -112,7 +122,32 @@ class DetailViewModel(
         }
     }
 
-    // Validate before saving
+    fun updateTodo() {
+        if (!isValid()) {
+            _uiState.value = DetailUiState.Error("Title cannot be empty")
+            return
+        }
+
+        viewModelScope.launch {
+            try {
+                val updatedTodo = Item(
+                    id = todoId,
+                    title = _title.value,
+                    description = _description.value,
+                    isCompleted = false,
+                    isReminderSet = false,
+                    dueDate = _selectedDueDate.value
+                )
+                Log.d("DetailViewModel", "Updating todo with dueDate: ${_selectedDueDate.value}")
+                todoRepository.updateItem(updatedTodo)
+                _uiState.value = DetailUiState.Success
+            } catch (e: Exception) {
+                Log.e("DetailViewModel", "Error updating todo", e)
+                _uiState.value = DetailUiState.Error("Failed to update todo")
+            }
+        }
+    }
+
     private fun isValid(): Boolean {
         return _title.value.isNotBlank()
     }
@@ -137,15 +172,16 @@ class DetailViewModel(
             if (hasNotificationPermission()) {
                 Log.d("DetailViewModel", "Has notification permission")
 
+                // Create LocalDateTime and convert to timestamp
                 val reminderDateTime = LocalDate.now().atTime(selectedTime)
-                val newDateTime = HelperUtils.fromLocalDateTime(reminderDateTime)
+                val timestamp = HelperUtils.fromLocalDateTime(reminderDateTime)
 
                 Log.d("DetailViewModel", "Setting reminder for: $reminderDateTime")
 
                 viewModelScope.launch {
                     val updatedToDo = item.copy(
                         isReminderSet = true,
-                        dueDate = newDateTime
+                        dueDate = timestamp  // Now using Long timestamp
                     )
                     todoRepository.updateItem(updatedToDo)
                     notificationHelper.scheduleNotification(updatedToDo)

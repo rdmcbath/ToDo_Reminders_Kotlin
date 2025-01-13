@@ -57,13 +57,11 @@ import com.example.todoreminder.data.repository.RepositoryProvider
 import com.example.todoreminder.notifications.NotificationHelper
 import com.example.todoreminder.ui.components.DatePickerModal
 import com.example.todoreminder.ui.components.ToDoTimePickerDialog
-import com.example.todoreminder.utils.HelperUtils
 import com.example.todoreminder.ui.screens.viewmodel.DetailViewModel
 import com.example.todoreminder.ui.screens.viewmodel.DetailViewModelFactory
+import com.example.todoreminder.utils.HelperUtils
 import kotlinx.coroutines.launch
-import java.text.SimpleDateFormat
 import java.time.format.DateTimeFormatter
-import java.util.Locale
 
 @Composable
 fun DetailScreen(
@@ -90,16 +88,14 @@ fun DetailScreen(
     val snackbarHostState = remember { SnackbarHostState() }
 
     var showTimePicker by remember { mutableStateOf(false) }
-    val selectedTime by viewModel.selectedTime.collectAsState()
     var showDatePicker by remember { mutableStateOf(false) }
-    var selectedDate by remember { mutableStateOf<Long?>(null) }
-    val selectedDueDate by viewModel.selectedDueDate.collectAsState()
-
+    val selectedTime by viewModel.selectedTime.collectAsState()
+    val formattedDueDate by viewModel.formattedDueDate.collectAsState()
     val title by viewModel.title.collectAsState()
     val description by viewModel.description.collectAsState()
     val isCreatingNew by viewModel.isCreatingNew.collectAsState()
 
-    // Permission launcher
+    // Permission for sending notifications
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { isGranted: Boolean ->
@@ -112,7 +108,6 @@ fun DetailScreen(
         }
     }
 
-    // Define checkAndRequestNotificationPermission as a property
     val checkAndRequestNotificationPermission: (onPermissionGranted: () -> Unit) -> Unit =
         { onPermissionGranted ->
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -143,7 +138,7 @@ fun DetailScreen(
             }
         }
 
-    // Function to handle time selection
+    // Handle time selected
     fun handleTimeSelected(hour: Int, minute: Int) {
         Log.d("DetailScreen", "Time selected in DetailScreen: $hour:$minute")
         viewModel.onTimeSelected(hour, minute)
@@ -168,9 +163,11 @@ fun DetailScreen(
         )
     }
 
-    fun handleDateSelected(date: Long) {
-        selectedDate = date
-        viewModel.updateDueDate(date)
+    // Handle date selected
+    fun handleDateSelected(date: Long?) {
+        if (date != null) {
+            viewModel.onDueDateSelected(date)
+        }
         showDatePicker = false
     }
 
@@ -190,7 +187,12 @@ fun DetailScreen(
         when (uiState) {
             is DetailUiState.Success -> {
                 scope.launch {
-                    snackbarHostState.showSnackbar("Reminder set successfully!")
+                    val message = when (isCreatingNew) {
+                        true -> "ToDo Added!"
+                        false -> "ToDo updated!"
+                        else -> "Reminder set!"
+                }
+                    snackbarHostState.showSnackbar(message)
                 }
             }
 
@@ -320,7 +322,7 @@ fun DetailScreen(
 
                 // Due Date field
                 OutlinedTextField(
-                    value = selectedDueDate?.let { SimpleDateFormat("MMM dd, yyyy", Locale.getDefault()).format(it) } ?: "No date set",
+                    value = formattedDueDate,
                     onValueChange = {},
                     label = { Text("DUE DATE") },
                     modifier = Modifier.fillMaxWidth(),
@@ -373,22 +375,6 @@ fun DetailScreen(
                                     }
                                 }
 
-                                todo?.isReminderSet == true && formattedExistingTime != null -> {
-                                    Log.d(
-                                        "DetailScreen",
-                                        "Showing existing reminder time: $formattedExistingTime"
-                                    )
-                                    Text(
-                                        text = "Reminder set for: $formattedExistingTime",
-                                        modifier = Modifier.padding(
-                                            vertical = 24.dp,
-                                            horizontal = 24.dp
-                                        ),
-                                        style = MaterialTheme.typography.bodyLarge,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
-
                                 else -> {
                                     Log.d(
                                         "DetailScreen",
@@ -399,51 +385,71 @@ fun DetailScreen(
                             }
                         }
 
-                        if (isCreatingNew) {
-                            Button(
-                                onClick = {
-                                    viewModel.createTodo()
-                                },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(56.dp),
-                                shape = RoundedCornerShape(16.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.colorScheme.primary
-                                )
-                            ) {
-                                Text(
-                                    text = "Save Reminder",
-                                    style = MaterialTheme.typography.titleMedium
-                                )
+                        Box(
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            if (isCreatingNew) {
+                                Button(
+                                    onClick = { viewModel.createTodo() },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(56.dp)
+                                        .padding(bottom = 4.dp),
+                                    shape = RoundedCornerShape(16.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = MaterialTheme.colorScheme.primary
+                                    )
+                                ) {
+                                    Text(
+                                        text = "Save ToDo",
+                                        style = MaterialTheme.typography.titleMedium
+                                    )
+                                }
+                            } else {
+                                Button(
+                                    onClick = { viewModel.updateTodo() },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(56.dp)
+                                        .padding(bottom = 4.dp),
+                                    shape = RoundedCornerShape(16.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = MaterialTheme.colorScheme.primary
+                                    )
+                                ) {
+                                    Text(
+                                        text = "Update ToDo",
+                                        style = MaterialTheme.typography.titleMedium
+                                    )
+                                }
                             }
-                        } else {
-                            Button(
-                                onClick = {
-                                    if (selectedTime == null) {
-                                        showTimePicker = true
-                                        Log.d("DetailScreen", "Showing time picker dialog")
-                                    } else {
-                                        todo?.let { safeTodo ->
-                                            checkAndRequestNotificationPermission {
-                                                viewModel.setReminder(safeTodo)
-                                            }
+                        }
+
+                        Button(
+                            onClick = {
+                                if (selectedTime == null) {
+                                    showTimePicker = true
+                                    Log.d("DetailScreen", "Showing time picker dialog")
+                                } else {
+                                    todo?.let { safeTodo ->
+                                        checkAndRequestNotificationPermission {
+                                            viewModel.setReminder(safeTodo)
                                         }
                                     }
-                                },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(56.dp),
-                                shape = RoundedCornerShape(16.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.colorScheme.primary
-                                )
-                            ) {
-                                Text(
-                                    text = if (todo?.isReminderSet != true) "Set Reminder" else "Reminder is already set",
-                                    style = MaterialTheme.typography.titleMedium
-                                )
-                            }
+                                }
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(56.dp),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary
+                            )
+                        ) {
+                            Text(
+                                text = if (todo?.isReminderSet != true) "Set Reminder" else "Reminder is already set",
+                                style = MaterialTheme.typography.titleMedium
+                            )
                         }
                     }
                 }
